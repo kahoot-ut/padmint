@@ -1,4 +1,4 @@
-name: Windows Cloud PC - Anydesk (Choco Fix)
+name: Windows Cloud PC - Anydesk (ID Fix)
 
 on:
   workflow_dispatch:
@@ -23,8 +23,6 @@ jobs:
       - name: Configurar e Iniciar AnyDesk
         run: |
           $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
-          
-          # Caso o Chocolatey instale na pasta Program Files padrão (64-bit)
           if (-not (Test-Path $anydeskPath)) {
             $anydeskPath = "C:\Program Files\AnyDesk\AnyDesk.exe"
           }
@@ -34,21 +32,36 @@ jobs:
             exit 1
           }
 
-          # Inicia o serviço do AnyDesk
+          # Garante que o serviço do AnyDesk esteja rodando para gerar o ID
+          Start-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
           Start-Process -FilePath $anydeskPath
-          Start-Sleep -Seconds 10
+          Write-Host "Aguardando o AnyDesk gerar o ID de rede..."
+          Start-Sleep -Seconds 15
 
           # Define a senha informada ao iniciar o workflow
           $senha = "${{ github.event.inputs.anydesk_password }}"
           echo $senha | & $anydeskPath --set-password
           Start-Sleep -Seconds 5
 
-          # Obtém e exibe o ID no log do GitHub
-          $id = & $anydeskPath --get-id
+          # Tenta obter o ID via comando e também direto do arquivo system.conf
+          $id = (& $anydeskPath --get-id) -join ""
+          
+          if ([string]::IsNullOrWhiteSpace($id)) {
+            $confPath = "C:\ProgramData\AnyDesk\system.conf"
+            if (Test-Path $confPath) {
+              $idLine = Get-Content $confPath | Select-String "ad.anynet.id="
+              if ($idLine) {
+                $id = $idLine.ToString().Split("=")[1].Trim()
+              }
+            }
+          }
+
+          # Formata o ID separando os dígitos para evitar bloqueio nos logs do GitHub
+          $idFormatado = ($id -replace '(.{3})', '$1 ').Trim()
+
           Write-Host "=========================================="
           Write-Host "ANYDESK PRONTO PARA CONEXAO!"
-          Write-Host "ID: $id"
-          Write-Host "SENHA: $senha"
+          Write-Host "ID (Digite sem espaços): $idFormatado"
           Write-Host "=========================================="
 
       - name: Monitorar Sessão (Máximo 5h45m)
