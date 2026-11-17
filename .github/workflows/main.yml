@@ -1,4 +1,4 @@
-name: Windows Cloud PC - Anydesk (Fixed)
+name: Windows Cloud PC - Anydesk (Direct Download)
 
 on:
   workflow_dispatch:
@@ -12,21 +12,28 @@ jobs:
   build:
     name: Start Cloud PC
     runs-on: windows-latest
-    timeout-minutes: 360  # Limite máximo real permitido pelo GitHub Actions (6 horas)
+    timeout-minutes: 360
 
     steps:
-      - name: Instalar AnyDesk
+      - name: Baixar e Instalar AnyDesk
         run: |
-          Write-Host "Baixando e instalando o AnyDesk oficial..."
-          winget install --id AnyDeskSoftwareGmbH.AnyDesk -e --accept-source-agreements --accept-package-agreements --silent
+          Write-Host "Baixando instalador oficial do AnyDesk..."
+          $installerPath = "$env:TEMP\AnyDesk.exe"
+          $installDir = "C:\Program Files (x86)\AnyDesk"
+          
+          # Baixa direto do servidor oficial sem usar winget
+          Invoke-WebRequest -Uri "https://anydesk.com" -OutFile $installerPath -UseBasicParsing
+          
+          Write-Host "Instalando o AnyDesk silenciosamente..."
+          Start-Process -FilePath $installerPath -ArgumentList "--install `"$installDir`" --start-with-win --silent" -Wait
+          Start-Sleep -Seconds 10
 
       - name: Configurar e Iniciar AnyDesk
         run: |
           $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
           
-          # Verifica se o programa realmente foi instalado antes de continuar
           if (-not (Test-Path $anydeskPath)) {
-            Write-Error "ERRO: O AnyDesk não foi encontrado após a instalação. Abortando workflow."
+            Write-Error "ERRO: O executável do AnyDesk não foi encontrado em $anydeskPath."
             exit 1
           }
 
@@ -39,7 +46,7 @@ jobs:
           echo $senha | & $anydeskPath --set-password
           Start-Sleep -Seconds 5
 
-          # Obtém e exibe o ID no log do GitHub para você conectar
+          # Obtém e exibe o ID no log do GitHub
           $id = & $anydeskPath --get-id
           Write-Host "=========================================="
           Write-Host "ANYDESK PRONTO PARA CONEXAO!"
@@ -50,16 +57,14 @@ jobs:
       - name: Monitorar Sessão (Máximo 5h45m)
         run: |
           $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
-          # Roda por 345 minutos (5h45m) para encerrar de forma limpa antes do corte de 6h do GitHub
           $tempoLimite = (Get-Date).AddMinutes(345)
 
           while ((Get-Date) -lt $tempoLimite) {
             $process = Get-Process -Name "AnyDesk" -ErrorAction SilentlyContinue
             if (-not $process) {
-              Write-Host "AnyDesk fechou inesperadamente. Reiniciando..."
+              Write-Host "AnyDesk fechou. Reiniciando..."
               Start-Process -FilePath $anydeskPath
             }
             Start-Sleep -Seconds 60
           }
-          Write-Host "Tempo limite da sessão atingido. Encerrando máquina virtual."
-
+          Write-Host "Tempo limite da sessão atingido. Encerrando."
