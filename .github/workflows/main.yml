@@ -1,51 +1,65 @@
-name: Windows Cloud PC - Anydesk (Optimized)
+name: Windows Cloud PC - Anydesk (Fixed)
 
 on:
   workflow_dispatch:
+    inputs:
+      anydesk_password:
+        description: 'Senha para conectar no AnyDesk (mínimo 8 caracteres)'
+        required: true
+        default: 'SenhaForte123!'
 
 jobs:
   build:
-    name: Start Building...
+    name: Start Cloud PC
     runs-on: windows-latest
-    timeout-minutes: 10080  # Máximo de 7 dias para evitar tempo de execução excessivo
+    timeout-minutes: 360  # Limite máximo real permitido pelo GitHub Actions (6 horas)
 
     steps:
-      - name: Downloading & Installing Essentials
+      - name: Instalar AnyDesk
         run: |
-          # Baixa o arquivo .bat para instalar componentes essenciais
-          Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/7eiczvgil84czu55dxep3/Downloads.bat?rlkey=wzdc1wxjsph2b7r0atplmdz3p&dl=1" -OutFile "Downloads.bat"
-          # Executa o script .bat para instalar os componentes
-          cmd /c Downloads.bat
+          Write-Host "Baixando e instalando o AnyDesk oficial..."
+          winget install --id AnyDeskSoftwareGmbH.AnyDesk -e --accept-source-agreements --accept-package-agreements --silent
 
-      - name: Log In To AnyDesk
+      - name: Configurar e Iniciar AnyDesk
         run: |
-          # Verifica se o arquivo start.bat existe antes de executar
-          if (Test-Path "start.bat") {
-            cmd /c start.bat
-          } else {
-            Write-Host "Arquivo start.bat não encontrado. Verifique a configuração."
+          $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
+          
+          # Verifica se o programa realmente foi instalado antes de continuar
+          if (-not (Test-Path $anydeskPath)) {
+            Write-Error "ERRO: O AnyDesk não foi encontrado após a instalação. Abortando workflow."
+            exit 1
           }
 
-      - name: Monitor and Restart AnyDesk if Needed
+          # Inicia o serviço do AnyDesk
+          Start-Process -FilePath $anydeskPath
+          Start-Sleep -Seconds 10
+
+          # Define a senha informada ao iniciar o workflow
+          $senha = "${{ github.event.inputs.anydesk_password }}"
+          echo $senha | & $anydeskPath --set-password
+          Start-Sleep -Seconds 5
+
+          # Obtém e exibe o ID no log do GitHub para você conectar
+          $id = & $anydeskPath --get-id
+          Write-Host "=========================================="
+          Write-Host "ANYDESK PRONTO PARA CONEXAO!"
+          Write-Host "ID: $id"
+          Write-Host "SENHA: $senha"
+          Write-Host "=========================================="
+
+      - name: Monitorar Sessão (Máximo 5h45m)
         run: |
-          # Monitora a conexão do AnyDesk e reinicia se necessário
-          while ($true) {
+          $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
+          # Roda por 345 minutos (5h45m) para encerrar de forma limpa antes do corte de 6h do GitHub
+          $tempoLimite = (Get-Date).AddMinutes(345)
+
+          while ((Get-Date) -lt $tempoLimite) {
             $process = Get-Process -Name "AnyDesk" -ErrorAction SilentlyContinue
             if (-not $process) {
-              Write-Host "AnyDesk não está rodando, reiniciando..."
-              cmd /c start.bat
+              Write-Host "AnyDesk fechou inesperadamente. Reiniciando..."
+              Start-Process -FilePath $anydeskPath
             }
-            Start-Sleep -Seconds 300  # Verifica a cada 5 minutos
+            Start-Sleep -Seconds 60
           }
+          Write-Host "Tempo limite da sessão atingido. Encerrando máquina virtual."
 
-      - name: Time Counter (Long Running Task)
-        run: |
-          # Configura para manter a máquina em execução
-          Start-Sleep -Seconds 604800  # 7 dias de execução contínua
-
-      - name: Clean Up Temporary Files
-        if: success()  # Executa esta etapa apenas se todas as etapas anteriores forem bem-sucedidas
-        run: |
-          # Remove arquivos temporários ou logs gerados
-          Remove-Item Downloads.bat -Force
-          Write-Host "Limpeza completa."
