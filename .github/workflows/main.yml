@@ -1,4 +1,4 @@
-name: Windows Cloud PC - Anydesk (Direct Download)
+name: Windows Cloud PC - Anydesk (Choco Fix)
 
 on:
   workflow_dispatch:
@@ -15,25 +15,22 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Baixar e Instalar AnyDesk
+      - name: Instalar AnyDesk via Chocolatey
         run: |
-          Write-Host "Baixando instalador oficial do AnyDesk..."
-          $installerPath = "$env:TEMP\AnyDesk.exe"
-          $installDir = "C:\Program Files (x86)\AnyDesk"
-          
-          # Baixa direto do servidor oficial sem usar winget
-          Invoke-WebRequest -Uri "https://anydesk.com" -OutFile $installerPath -UseBasicParsing
-          
-          Write-Host "Instalando o AnyDesk silenciosamente..."
-          Start-Process -FilePath $installerPath -ArgumentList "--install `"$installDir`" --start-with-win --silent" -Wait
-          Start-Sleep -Seconds 10
+          Write-Host "Instalando AnyDesk usando Chocolatey..."
+          choco install anydesk.install -y --no-progress
 
       - name: Configurar e Iniciar AnyDesk
         run: |
           $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
           
+          # Caso o Chocolatey instale na pasta Program Files padrão (64-bit)
           if (-not (Test-Path $anydeskPath)) {
-            Write-Error "ERRO: O executável do AnyDesk não foi encontrado em $anydeskPath."
+            $anydeskPath = "C:\Program Files\AnyDesk\AnyDesk.exe"
+          }
+
+          if (-not (Test-Path $anydeskPath)) {
+            Write-Error "ERRO: Executável do AnyDesk não encontrado."
             exit 1
           }
 
@@ -57,6 +54,10 @@ jobs:
       - name: Monitorar Sessão (Máximo 5h45m)
         run: |
           $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
+          if (-not (Test-Path $anydeskPath)) {
+            $anydeskPath = "C:\Program Files\AnyDesk\AnyDesk.exe"
+          }
+
           $tempoLimite = (Get-Date).AddMinutes(345)
 
           while ((Get-Date) -lt $tempoLimite) {
