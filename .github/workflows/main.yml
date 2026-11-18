@@ -6,7 +6,7 @@ on:
       anydesk_password:
         description: 'Senha para conectar no AnyDesk (mínimo 8 caracteres)'
         required: true
-        default: 'SenhaForte123!'
+        default: 'S3nh4F0rt3123!'
 
 jobs:
   build:
