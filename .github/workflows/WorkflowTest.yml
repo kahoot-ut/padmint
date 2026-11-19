@@ -30,7 +30,7 @@ jobs:
       - name: Instalar AnyDesk via Chocolatey
         run: |
           Write-Host "Instalando AnyDesk usando Chocolatey..."
-          choco install anydesk.install -y --no-progress
+          choco install anydesk.install -y --no-progress --ignore-checksums
 
       - name: Baixar Arquivos dos Links na Área de Trabalho
         run: |
@@ -45,7 +45,6 @@ jobs:
           foreach ($url in $links) {
             if (-not [string]::IsNullOrWhiteSpace($url)) {
               try {
-                # Pega o nome original do arquivo pela URL ou cria um genérico
                 $uri = [System.Uri]$url
                 $fileName = [System.IO.Path]::GetFileName($uri.LocalPath)
                 if ([string]::IsNullOrWhiteSpace($fileName)) {
@@ -56,7 +55,6 @@ jobs:
                 Write-Host "Baixando Link $contador ($fileName)..."
                 Invoke-WebRequest -Uri $url -OutFile $destino -UseBasicParsing
 
-                # Se for .zip, extrai automaticamente em uma pasta com o mesmo nome
                 if ($fileName -like "*.zip") {
                   $pastaDestino = Join-Path $desktop ([System.IO.Path]::GetFileNameWithoutExtension($fileName))
                   Write-Host "Extraindo $fileName..."
