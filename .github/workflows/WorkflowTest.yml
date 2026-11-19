@@ -1,0 +1,132 @@
+name: Windows Cloud PC - NXNative Ready
+
+on:
+  workflow_dispatch:
+    inputs:
+      anydesk_password:
+        description: 'Senha para conectar no AnyDesk (mínimo 8 caracteres)'
+        required: true
+        default: 'S3nh4F0rt3123!'
+      link_1:
+        description: 'Link 1 (NXNative v2.0.4 - já preenchido)'
+        required: false
+        default: 'https://github.com'
+      link_2:
+        description: 'Link 2 (Jogo / ROM - cole o link direto aqui)'
+        required: false
+        default: ''
+      link_3:
+        description: 'Link 3 (Arquivo extra / Chaves - opcional)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    name: Start Cloud PC
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Instalar AnyDesk via Chocolatey
+        run: |
+          Write-Host "Instalando AnyDesk usando Chocolatey..."
+          choco install anydesk.install -y --no-progress
+
+      - name: Baixar Arquivos dos Links na Área de Trabalho
+        run: |
+          $desktop = "C:\Users\runneradmin\Desktop"
+          $links = @(
+            "${{ github.event.inputs.link_1 }}",
+            "${{ github.event.inputs.link_2 }}",
+            "${{ github.event.inputs.link_3 }}"
+          )
+
+          $contador = 1
+          foreach ($url in $links) {
+            if (-not [string]::IsNullOrWhiteSpace($url)) {
+              try {
+                # Pega o nome original do arquivo pela URL ou cria um genérico
+                $uri = [System.Uri]$url
+                $fileName = [System.IO.Path]::GetFileName($uri.LocalPath)
+                if ([string]::IsNullOrWhiteSpace($fileName)) {
+                  $fileName = "Arquivo_$contador.bin"
+                }
+
+                $destino = Join-Path $desktop $fileName
+                Write-Host "Baixando Link $contador ($fileName)..."
+                Invoke-WebRequest -Uri $url -OutFile $destino -UseBasicParsing
+
+                # Se for .zip, extrai automaticamente em uma pasta com o mesmo nome
+                if ($fileName -like "*.zip") {
+                  $pastaDestino = Join-Path $desktop ([System.IO.Path]::GetFileNameWithoutExtension($fileName))
+                  Write-Host "Extraindo $fileName..."
+                  Expand-Archive -Path $destino -DestinationPath $pastaDestino -Force
+                  Remove-Item $destino -Force
+                }
+
+                Write-Host "Link $contador concluído!"
+              } catch {
+                Write-Warning "Não foi possível baixar o Link $contador : $_"
+              }
+            }
+            $contador++
+          }
+
+      - name: Configurar e Iniciar AnyDesk
+        run: |
+          $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
+          if (-not (Test-Path $anydeskPath)) {
+            $anydeskPath = "C:\Program Files\AnyDesk\AnyDesk.exe"
+          }
+
+          if (-not (Test-Path $anydeskPath)) {
+            Write-Error "ERRO: Executável do AnyDesk não encontrado."
+            exit 1
+          }
+
+          Start-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
+          Start-Process -FilePath $anydeskPath
+          Write-Host "Aguardando o AnyDesk gerar o ID de rede..."
+          Start-Sleep -Seconds 15
+
+          $senha = "${{ github.event.inputs.anydesk_password }}"
+          echo $senha | & $anydeskPath --set-password
+          Start-Sleep -Seconds 5
+
+          $id = (& $anydeskPath --get-id) -join ""
+          
+          if ([string]::IsNullOrWhiteSpace($id)) {
+            $confPath = "C:\ProgramData\AnyDesk\system.conf"
+            if (Test-Path $confPath) {
+              $idLine = Get-Content $confPath | Select-String "ad.anynet.id="
+              if ($idLine) {
+                $id = $idLine.ToString().Split("=").Trim()
+              }
+            }
+          }
+
+          $idFormatado = ($id -replace '(.{3})', '$1 ').Trim()
+
+          Write-Host "=========================================="
+          Write-Host "ANYDESK PRONTO PARA CONEXAO!"
+          Write-Host "ID (Digite sem espaços): $idFormatado"
+          Write-Host "=========================================="
+
+      - name: Monitorar Sessão (Máximo 5h50m)
+        run: |
+          $anydeskPath = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
+          if (-not (Test-Path $anydeskPath)) {
+            $anydeskPath = "C:\Program Files\AnyDesk\AnyDesk.exe"
+          }
+
+          $tempoLimite = (Get-Date).AddMinutes(350)
+
+          while ((Get-Date) -lt $tempoLimite) {
+            $process = Get-Process -Name "AnyDesk" -ErrorAction SilentlyContinue
+            if (-not $process) {
+              Write-Host "AnyDesk fechou. Reiniciando..."
+              Start-Process -FilePath $anydeskPath
+            }
+            Start-Sleep -Seconds 60
+          }
+          Write-Host "Tempo limite da sessão atingido. Encerrando."
